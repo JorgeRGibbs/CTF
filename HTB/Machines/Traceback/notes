@@ -124,7 +124,7 @@ We might have found a privilege escalation vector.
 	/etc/update-motd.d/80-esm --
 	/home/webadmin/note.txt --
 
-There seems to be a cron job running that executes these scripts.
+There seems to be a cron job running that uses these scripts.
 
 	root      38116  0.0  0.0   4628   780 ?        Ss   17:11   0:00 /bin/sh -c sleep 30 ; /bin/cp /var/backups/.update-motd.d/* /etc/update-motd.d/
 
@@ -143,7 +143,7 @@ So I guess that the following message means that either a publickey or a passwor
 	
 	sysadmin@10.10.10.181: Permission denied (publickey,password).
 
-Now, all I have to do is to modify any script on the update-motd.d directory to access the root flag and login through SSH.  
+Now, all I have to do is to modify any script on the update-motd.d directory to access the root flag and login through SSH. Remember the cron job we found earlier? It restores backups of the motd files every 30 seconds. So, we've got to overwrite these files and then login through ssh in less than 30 seconds. The uptime command comes in handy to know if the 30 seconds mark is near.
 
 	echo "cat /root/root.txt" > 10-help-text
 
