@@ -37,11 +37,11 @@ Ennumeration. Initial Scan.
 	OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
 	Nmap done: 1 IP address (1 host up) scanned in 37.28 seconds
 
-We've got Openssh running on port 22 and Werkzeug httpd on port 5000. I've never heard of Werkzeug bit it seems to be a web server. Let's access http://10.10.10.226:5000/
+We've got Openssh running on port 22 and Werkzeug httpd on port 5000. I've never heard of Werkzeug but it seems to be a web server. Let's access http://10.10.10.226:5000/
 
 We find a web page. It seems to be a set of hacking tools, we can use searchsploit, msfvenom and nmap on it. msfvenom allows us to upload a template file. This could be used to get a foothold...
 
-After hours of tweaking with this site I got a foothold. I attempted injecting commands into the box since commands are being run with whatever the user inputs. There might be a way to exploit that but I found another attack vector.It turns out there's a vulnerability in msfvenom that was recently disclosed (https://cvedetails.com/cve/CVE-2020-7384/). It can give us command execution in the box by generating an apk payload. There's a metasploit exploit available.
+After hours of tweaking with this site I got a foothold. I attempted injecting commands into the box since commands are being run with whatever the user inputs. There might be a way to exploit that but I found another attack vector. It turns out there's a vulnerability in msfvenom that was recently disclosed (https://cvedetails.com/cve/CVE-2020-7384/). It can give us command execution in the box by generating an apk payload. There's a metasploit exploit available.
 
 	msf6 > search msfvenom
 
